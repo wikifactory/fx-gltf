@@ -28,6 +28,41 @@
 #define FX_GLTF_NODISCARD
 #endif
 
+#if (defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)) && !defined(FX_GLTF_NOEXCEPTION)
+
+template <typename T>
+using FxValueOrError = T;
+
+#define fxThrow throw
+#define fxSuccess return;
+#define fxTry try
+#define fxCatch(exception) catch(exception)
+
+#define abortOnError(f) f;
+
+#else
+#include <cstdlib>
+#include <iostream>
+
+typedef std::optional<std::runtime_error> FxError;
+template <typename T>
+using FxValueOrError = std::pair<T, FxError>;
+
+#define fxThrow return
+#define fxSuccess return {};
+#define fxTry if(true)
+#define fxCatch(exception) if(false)
+
+inline void _abortOnError(FxError err) {
+    if (err.has_value()) {
+        std::cerr << err.value().what() << std::endl;
+        std::abort();
+    }
+}
+#define abortOnError(f) _abortOnError(f);
+
+#endif
+
 namespace fx
 {
 namespace base64
@@ -196,20 +231,20 @@ namespace gltf
     {
 #if defined(FX_GLTF_HAS_CPP_17)
         template <typename TTarget>
-        inline std::optional<std::runtime_error> ReadRequiredField(std::string_view key, nlohmann::json const & json, TTarget & target)
+        inline FxError ReadRequiredField(std::string_view key, nlohmann::json const & json, TTarget & target)
 #else
         template <typename TKey, typename TTarget>
-        inline std::optional<std::runtime_error> ReadRequiredField(TKey && key, nlohmann::json const & json, TTarget & target)
+        inline FxError ReadRequiredField(TKey && key, nlohmann::json const & json, TTarget & target)
 #endif
         {
             const nlohmann::json::const_iterator iter = json.find(key);
             if (iter == json.end())
             {
-                return invalid_gltf_document("Required field not found", std::string(key));
+                fxThrow invalid_gltf_document("Required field not found", std::string(key));
             }
 
             target = iter->get<TTarget>();
-            return {};
+            fxSuccess;
         }
 
 #if defined(FX_GLTF_HAS_CPP_17)
@@ -857,7 +892,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Accessor::Sparse::Values & values)
     {
-        detail::ReadRequiredField("bufferView", json, values.bufferView);
+        abortOnError(detail::ReadRequiredField("bufferView", json, values.bufferView));
 
         detail::ReadOptionalField("byteOffset", json, values.byteOffset);
 
@@ -866,8 +901,8 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Accessor::Sparse::Indices & indices)
     {
-        detail::ReadRequiredField("bufferView", json, indices.bufferView);
-        detail::ReadRequiredField("componentType", json, indices.componentType);
+        abortOnError(detail::ReadRequiredField("bufferView", json, indices.bufferView));
+        abortOnError(detail::ReadRequiredField("componentType", json, indices.componentType));
 
         detail::ReadOptionalField("byteOffset", json, indices.byteOffset);
 
@@ -1865,7 +1900,7 @@ namespace gltf
 
     inline Document LoadFromText(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
-        //try
+        fxTry
         {
             detail::ThrowIfBad(input);
 
@@ -1874,15 +1909,15 @@ namespace gltf
 
             return detail::Create(json, { documentRootPath, readQuotas });
         }
-        //catch (invalid_gltf_document &)
+        fxCatch (invalid_gltf_document &)
         {
             //throw;
         }
-        //catch (std::system_error &)
+        fxCatch (std::system_error &)
         {
             //throw;
         }
-        //catch (...)
+        fxCatch (...)
         {
             //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
         }
@@ -1901,7 +1936,7 @@ namespace gltf
 
     inline Document LoadFromBinary(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
-        //try
+        fxTry
         {
             detail::GLBHeader header{};
             detail::ThrowIfBad(input.read(reinterpret_cast<char *>(&header), detail::HeaderSize));
@@ -1943,15 +1978,15 @@ namespace gltf
                 nlohmann::json::parse(json.begin(), json.end()),
                 { documentRootPath, readQuotas, &binary });
         }
-        //catch (invalid_gltf_document &)
+        fxCatch (invalid_gltf_document &)
         {
             //throw;
         }
-        //catch (std::system_error &)
+        fxCatch (std::system_error &)
         {
             //throw;
         }
-        //catch (...)
+        fxCatch (...)
         {
             //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
         }
@@ -1970,21 +2005,21 @@ namespace gltf
 
     inline void Save(Document const & document, std::ostream & output, std::string const & documentRootPath, bool useBinaryFormat)
     {
-        //try
+        fxTry
         {
             detail::ValidateBuffers(document, useBinaryFormat);
 
             detail::Save(document, output, documentRootPath, useBinaryFormat);
         }
-        //catch (invalid_gltf_document &)
+        fxCatch (invalid_gltf_document &)
         {
             //throw;
         }
-        //catch (std::system_error &)
+        fxCatch (std::system_error &)
         {
             //throw;
         }
-        //catch (...)
+        fxCatch (...)
         {
             //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
         }
@@ -2001,11 +2036,11 @@ namespace gltf
 inline void FormatException(std::string & output, std::exception const & ex, int level = 0)
 {
     output.append(std::string(level, ' ')).append(ex.what());
-    //try
+    fxTry
     {
         //std::rethrow_if_nested(ex);
     }
-    //catch (std::exception const & e)
+    fxCatch (std::exception const & e)
     {
         //FormatException(output.append("\n"), e, level + 2);
     }
