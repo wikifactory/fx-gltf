@@ -30,15 +30,23 @@
 
 #if (defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)) && !defined(FX_GLTF_NOEXCEPTION)
 
+typedef void FxError;
 template <typename T>
 using FxValueOrError = T;
 
 #define fxThrow throw
+#define fxThrowValue(rv, e) throw e
 #define fxSuccess return;
 #define fxTry try
 #define fxCatch(exception) catch(exception)
 
-#define abortOnError(f) f;
+#define abortOnError(f) f
+
+#define returnValue(v) return v
+
+#define returnOnError(sym, f) sym = f
+
+#define returnValueOnError(sym, f, rv) sym = f
 
 #else
 #include <cstdlib>
@@ -49,6 +57,7 @@ template <typename T>
 using FxValueOrError = std::pair<T, FxError>;
 
 #define fxThrow return
+#define fxThrowValue(rv, e) return std::make_pair(rv, e)
 #define fxSuccess return {};
 #define fxTry if(true)
 #define fxCatch(exception) if(false)
@@ -59,7 +68,27 @@ inline void _abortOnError(FxError err) {
         std::abort();
     }
 }
-#define abortOnError(f) _abortOnError(f);
+#define abortOnError(f) _abortOnError(f)
+
+#define returnValue(v) return std::make_pair(v, std::nullopt)
+
+#define returnOnError(sym, f) \
+    if (true) {          \
+      auto v = f;        \
+      if (v.second.has_value()) { \
+        return v.second;    \
+      } \
+      sym = v.first;                            \
+    }
+
+#define returnValueOnError(sym, f, rv) \
+    if (true) {          \
+      auto v = f;        \
+      if (v.second.has_value()) { \
+        return std::make_pair(rv, v.second); \
+      } \
+      sym = v.first; \
+    }
 
 #endif
 
@@ -317,12 +346,12 @@ namespace gltf
             return {};
         }
 
-        inline std::pair<std::string, std::optional<std::runtime_error>> CreateBufferUriPath(std::string const & documentRootPath, std::string const & bufferUri)
+        inline FxValueOrError<std::string> CreateBufferUriPath(std::string const & documentRootPath, std::string const & bufferUri)
         {
             // Prevent simple forms of path traversal from malicious uri references...
             if (bufferUri.empty() || bufferUri.find("..") != std::string::npos || bufferUri.front() == '/' || bufferUri.front() == '\\')
             {
-                return std::make_pair("", invalid_gltf_document("Invalid buffer.uri value", bufferUri));
+                fxThrowValue("", invalid_gltf_document("Invalid buffer.uri value", bufferUri));
             }
 
             std::string documentRoot = documentRootPath;
@@ -334,7 +363,7 @@ namespace gltf
                 }
             }
 
-            return std::make_pair(documentRoot + bufferUri, std::nullopt);
+            returnValue(documentRoot + bufferUri);
         }
 
         struct ChunkHeader
@@ -612,7 +641,7 @@ namespace gltf
             return uri.find(detail::MimetypeImagePNG) == 0 || uri.find(detail::MimetypeImageJPG) == 0;
         }
 
-        void MaterializeData(std::vector<uint8_t> & data) const
+        FxError MaterializeData(std::vector<uint8_t> & data) const
         {
             char const * const mimetype = uri.find(detail::MimetypeImagePNG) == 0 ? detail::MimetypeImagePNG : detail::MimetypeImageJPG;
             const std::size_t startPos = std::char_traits<char>::length(mimetype) + 1;
@@ -625,8 +654,9 @@ namespace gltf
 #endif
             if (!success)
             {
-                //throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                fxThrow invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
             }
+            fxSuccess;
         }
     };
 
@@ -911,18 +941,18 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Accessor::Sparse & sparse)
     {
-        detail::ReadRequiredField("count", json, sparse.count);
-        detail::ReadRequiredField("indices", json, sparse.indices);
-        detail::ReadRequiredField("values", json, sparse.values);
+        abortOnError(detail::ReadRequiredField("count", json, sparse.count));
+        abortOnError(detail::ReadRequiredField("indices", json, sparse.indices));
+        abortOnError(detail::ReadRequiredField("values", json, sparse.values));
 
         detail::ReadExtensionsAndExtras(json, sparse.extensionsAndExtras);
     }
 
     inline void from_json(nlohmann::json const & json, Accessor & accessor)
     {
-        detail::ReadRequiredField("componentType", json, accessor.componentType);
-        detail::ReadRequiredField("count", json, accessor.count);
-        detail::ReadRequiredField("type", json, accessor.type);
+        abortOnError(detail::ReadRequiredField("componentType", json, accessor.componentType));
+        abortOnError(detail::ReadRequiredField("count", json, accessor.count));
+        abortOnError(detail::ReadRequiredField("type", json, accessor.type));
 
         detail::ReadOptionalField("bufferView", json, accessor.bufferView);
         detail::ReadOptionalField("byteOffset", json, accessor.byteOffset);
@@ -937,7 +967,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Animation::Channel::Target & animationChannelTarget)
     {
-        detail::ReadRequiredField("path", json, animationChannelTarget.path);
+        abortOnError(detail::ReadRequiredField("path", json, animationChannelTarget.path));
 
         detail::ReadOptionalField("node", json, animationChannelTarget.node);
 
@@ -946,8 +976,8 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Animation::Channel & animationChannel)
     {
-        detail::ReadRequiredField("sampler", json, animationChannel.sampler);
-        detail::ReadRequiredField("target", json, animationChannel.target);
+        abortOnError(detail::ReadRequiredField("sampler", json, animationChannel.sampler));
+        abortOnError(detail::ReadRequiredField("target", json, animationChannel.target));
 
         detail::ReadExtensionsAndExtras(json, animationChannel.extensionsAndExtras);
     }
@@ -975,8 +1005,8 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Animation::Sampler & animationSampler)
     {
-        detail::ReadRequiredField("input", json, animationSampler.input);
-        detail::ReadRequiredField("output", json, animationSampler.output);
+        abortOnError(detail::ReadRequiredField("input", json, animationSampler.input));
+        abortOnError(detail::ReadRequiredField("output", json, animationSampler.output));
 
         detail::ReadOptionalField("interpolation", json, animationSampler.interpolation);
 
@@ -985,8 +1015,8 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Animation & animation)
     {
-        detail::ReadRequiredField("channels", json, animation.channels);
-        detail::ReadRequiredField("samplers", json, animation.samplers);
+        abortOnError(detail::ReadRequiredField("channels", json, animation.channels));
+        abortOnError(detail::ReadRequiredField("samplers", json, animation.samplers));
 
         detail::ReadOptionalField("name", json, animation.name);
 
@@ -995,7 +1025,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Asset & asset)
     {
-        detail::ReadRequiredField("version", json, asset.version);
+        abortOnError(detail::ReadRequiredField("version", json, asset.version));
         detail::ReadOptionalField("copyright", json, asset.copyright);
         detail::ReadOptionalField("generator", json, asset.generator);
         detail::ReadOptionalField("minVersion", json, asset.minVersion);
@@ -1005,7 +1035,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Buffer & buffer)
     {
-        detail::ReadRequiredField("byteLength", json, buffer.byteLength);
+        abortOnError(detail::ReadRequiredField("byteLength", json, buffer.byteLength));
 
         detail::ReadOptionalField("name", json, buffer.name);
         detail::ReadOptionalField("uri", json, buffer.uri);
@@ -1015,8 +1045,8 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, BufferView & bufferView)
     {
-        detail::ReadRequiredField("buffer", json, bufferView.buffer);
-        detail::ReadRequiredField("byteLength", json, bufferView.byteLength);
+        abortOnError(detail::ReadRequiredField("buffer", json, bufferView.buffer));
+        abortOnError(detail::ReadRequiredField("byteLength", json, bufferView.byteLength));
 
         detail::ReadOptionalField("byteOffset", json, bufferView.byteOffset);
         detail::ReadOptionalField("byteStride", json, bufferView.byteStride);
@@ -1045,18 +1075,18 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Camera::Orthographic & camera)
     {
-        detail::ReadRequiredField("xmag", json, camera.xmag);
-        detail::ReadRequiredField("ymag", json, camera.ymag);
-        detail::ReadRequiredField("zfar", json, camera.zfar);
-        detail::ReadRequiredField("znear", json, camera.znear);
+        abortOnError(detail::ReadRequiredField("xmag", json, camera.xmag));
+        abortOnError(detail::ReadRequiredField("ymag", json, camera.ymag));
+        abortOnError(detail::ReadRequiredField("zfar", json, camera.zfar));
+        abortOnError(detail::ReadRequiredField("znear", json, camera.znear));
 
         detail::ReadExtensionsAndExtras(json, camera.extensionsAndExtras);
     }
 
     inline void from_json(nlohmann::json const & json, Camera::Perspective & camera)
     {
-        detail::ReadRequiredField("yfov", json, camera.yfov);
-        detail::ReadRequiredField("znear", json, camera.znear);
+        abortOnError(detail::ReadRequiredField("yfov", json, camera.yfov));
+        abortOnError(detail::ReadRequiredField("znear", json, camera.znear));
 
         detail::ReadOptionalField("aspectRatio", json, camera.aspectRatio);
         detail::ReadOptionalField("zfar", json, camera.zfar);
@@ -1066,7 +1096,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Camera & camera)
     {
-        detail::ReadRequiredField("type", json, camera.type);
+        abortOnError(detail::ReadRequiredField("type", json, camera.type));
 
         detail::ReadOptionalField("name", json, camera.name);
 
@@ -1074,11 +1104,11 @@ namespace gltf
 
         if (camera.type == Camera::Type::Perspective)
         {
-            detail::ReadRequiredField("perspective", json, camera.perspective);
+            abortOnError(detail::ReadRequiredField("perspective", json, camera.perspective));
         }
         else if (camera.type == Camera::Type::Orthographic)
         {
-            detail::ReadRequiredField("orthographic", json, camera.orthographic);
+            abortOnError(detail::ReadRequiredField("orthographic", json, camera.orthographic));
         }
     }
 
@@ -1115,7 +1145,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Material::Texture & materialTexture)
     {
-        detail::ReadRequiredField("index", json, materialTexture.index);
+        abortOnError(detail::ReadRequiredField("index", json, materialTexture.index));
         detail::ReadOptionalField("texCoord", json, materialTexture.texCoord);
 
         detail::ReadExtensionsAndExtras(json, materialTexture.extensionsAndExtras);
@@ -1165,7 +1195,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Mesh & mesh)
     {
-        detail::ReadRequiredField("primitives", json, mesh.primitives);
+        abortOnError(detail::ReadRequiredField("primitives", json, mesh.primitives));
 
         detail::ReadOptionalField("name", json, mesh.name);
         detail::ReadOptionalField("weights", json, mesh.weights);
@@ -1190,7 +1220,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Primitive & primitive)
     {
-        detail::ReadRequiredField("attributes", json, primitive.attributes);
+        abortOnError(detail::ReadRequiredField("attributes", json, primitive.attributes));
 
         detail::ReadOptionalField("indices", json, primitive.indices);
         detail::ReadOptionalField("material", json, primitive.material);
@@ -1221,7 +1251,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Skin & skin)
     {
-        detail::ReadRequiredField("joints", json, skin.joints);
+        abortOnError(detail::ReadRequiredField("joints", json, skin.joints));
 
         detail::ReadOptionalField("inverseBindMatrices", json, skin.inverseBindMatrices);
         detail::ReadOptionalField("name", json, skin.name);
@@ -1241,7 +1271,7 @@ namespace gltf
 
     inline void from_json(nlohmann::json const & json, Document & document)
     {
-        detail::ReadRequiredField("asset", json, document.asset);
+        abortOnError(detail::ReadRequiredField("asset", json, document.asset));
 
         detail::ReadOptionalField("accessors", json, document.accessors);
         detail::ReadOptionalField("animations", json, document.animations);
@@ -1706,7 +1736,7 @@ namespace gltf
             }
         }
 
-        inline void MaterializeData(Buffer & buffer)
+        inline FxError MaterializeData(Buffer & buffer)
         {
             std::size_t startPos = 0;
             if (buffer.uri.find(detail::MimetypeApplicationOctet) == 0)
@@ -1722,7 +1752,7 @@ namespace gltf
             const std::size_t decodedEstimate = base64Length / 4 * 3;
             if (startPos == 0 || (decodedEstimate - 2) > buffer.byteLength) // we need to give room for padding...
             {
-                //throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                fxThrow invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
             }
 
 #if defined(FX_GLTF_HAS_CPP_17)
@@ -1732,11 +1762,13 @@ namespace gltf
 #endif
             if (!success)
             {
-                //throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                fxThrow invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
             }
+
+            fxSuccess;
         }
 
-        inline Document Create(nlohmann::json const & json, DataContext const & dataContext)
+        inline FxValueOrError<Document> Create(nlohmann::json const & json, DataContext const & dataContext)
         {
             Document document = json;
 
@@ -1766,11 +1798,7 @@ namespace gltf
                     else
                     {
                         std::string uriPath;
-                        std::optional<std::runtime_error> err;
-                        std::tie(uriPath, err) = detail::CreateBufferUriPath(dataContext.bufferRootPath, buffer.uri);
-                        if (err.has_value()) {
-                            return document; // TODO: make_pair
-                        }
+                        returnValueOnError(uriPath, detail::CreateBufferUriPath(dataContext.bufferRootPath, buffer.uri), document);
                         std::ifstream fileData(uriPath, std::ios::binary);
                         if (!fileData.good())
                         {
@@ -1794,7 +1822,7 @@ namespace gltf
                 }
             }
 
-            return document;
+            returnValue(document);
         }
 
         inline void ValidateBuffers(Document const & document, bool useBinaryFormat)
@@ -1834,7 +1862,7 @@ namespace gltf
             }
         }
 
-        inline void Save(Document const & document, std::ostream & output, std::string const & documentRootPath, bool useBinaryFormat)
+        inline FxError Save(Document const & document, std::ostream & output, std::string const & documentRootPath, bool useBinaryFormat)
         {
             // There is no way to check if an ostream has been opened in binary mode or not. Just checking
             // if it's "good" is the best we can do from here...
@@ -1884,8 +1912,7 @@ namespace gltf
                 if (!buffer.IsEmbeddedResource())
                 {
                     std::string uriPath;
-                    std::optional<std::runtime_error> err;
-                    std::tie(uriPath, err) = detail::CreateBufferUriPath(documentRootPath, buffer.uri);
+                    returnOnError(uriPath, detail::CreateBufferUriPath(documentRootPath, buffer.uri));
                     std::ofstream fileData(uriPath, std::ios::binary);
                     if (!fileData.good())
                     {
@@ -1895,10 +1922,12 @@ namespace gltf
                     fileData.write(reinterpret_cast<char const *>(&buffer.data[0]), buffer.byteLength);
                 }
             }
+
+            fxSuccess;
         }
     } // namespace detail
 
-    inline Document LoadFromText(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
+    inline FxValueOrError<Document> LoadFromText(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
         fxTry
         {
@@ -1923,7 +1952,7 @@ namespace gltf
         }
     }
 
-    inline Document LoadFromText(std::string const & documentFilePath, ReadQuotas const & readQuotas = {})
+    inline FxValueOrError<Document> LoadFromText(std::string const & documentFilePath, ReadQuotas const & readQuotas = {})
     {
         std::ifstream input(documentFilePath);
         if (!input.is_open())
@@ -1934,7 +1963,7 @@ namespace gltf
         return LoadFromText(input, detail::GetDocumentRootPath(documentFilePath), readQuotas);
     }
 
-    inline Document LoadFromBinary(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
+    inline FxValueOrError<Document> LoadFromBinary(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
         fxTry
         {
@@ -1992,7 +2021,7 @@ namespace gltf
         }
     }
 
-    inline Document LoadFromBinary(std::string const & documentFilePath, ReadQuotas const & readQuotas = {})
+    inline FxValueOrError<Document> LoadFromBinary(std::string const & documentFilePath, ReadQuotas const & readQuotas = {})
     {
         std::ifstream input(documentFilePath, std::ios::binary);
         if (!input.is_open())
