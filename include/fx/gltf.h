@@ -14,6 +14,7 @@
 #include <string>
 #include <system_error>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -195,19 +196,20 @@ namespace gltf
     {
 #if defined(FX_GLTF_HAS_CPP_17)
         template <typename TTarget>
-        inline void ReadRequiredField(std::string_view key, nlohmann::json const & json, TTarget & target)
+        inline std::optional<std::runtime_error> ReadRequiredField(std::string_view key, nlohmann::json const & json, TTarget & target)
 #else
         template <typename TKey, typename TTarget>
-        inline void ReadRequiredField(TKey && key, nlohmann::json const & json, TTarget & target)
+        inline std::optional<std::runtime_error> ReadRequiredField(TKey && key, nlohmann::json const & json, TTarget & target)
 #endif
         {
             const nlohmann::json::const_iterator iter = json.find(key);
             if (iter == json.end())
             {
-                throw invalid_gltf_document("Required field not found", std::string(key));
+                return invalid_gltf_document("Required field not found", std::string(key));
             }
 
             target = iter->get<TTarget>();
+            return {};
         }
 
 #if defined(FX_GLTF_HAS_CPP_17)
@@ -280,12 +282,12 @@ namespace gltf
             return {};
         }
 
-        inline std::string CreateBufferUriPath(std::string const & documentRootPath, std::string const & bufferUri)
+        inline std::pair<std::string, std::optional<std::runtime_error>> CreateBufferUriPath(std::string const & documentRootPath, std::string const & bufferUri)
         {
             // Prevent simple forms of path traversal from malicious uri references...
             if (bufferUri.empty() || bufferUri.find("..") != std::string::npos || bufferUri.front() == '/' || bufferUri.front() == '\\')
             {
-                throw invalid_gltf_document("Invalid buffer.uri value", bufferUri);
+                return std::make_pair("", invalid_gltf_document("Invalid buffer.uri value", bufferUri));
             }
 
             std::string documentRoot = documentRootPath;
@@ -297,7 +299,7 @@ namespace gltf
                 }
             }
 
-            return documentRoot + bufferUri;
+            return std::make_pair(documentRoot + bufferUri, std::nullopt);
         }
 
         struct ChunkHeader
@@ -588,7 +590,7 @@ namespace gltf
 #endif
             if (!success)
             {
-                throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                //throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
             }
         }
     };
@@ -849,7 +851,7 @@ namespace gltf
         }
         else
         {
-            throw invalid_gltf_document("Unknown accessor.type value", type);
+            //throw invalid_gltf_document("Unknown accessor.type value", type);
         }
     }
 
@@ -932,7 +934,7 @@ namespace gltf
         }
         else
         {
-            throw invalid_gltf_document("Unknown animation.sampler.interpolation value", type);
+            //throw invalid_gltf_document("Unknown animation.sampler.interpolation value", type);
         }
     }
 
@@ -1002,7 +1004,7 @@ namespace gltf
         }
         else
         {
-            throw invalid_gltf_document("Unknown camera.type value", type);
+            //throw invalid_gltf_document("Unknown camera.type value", type);
         }
     }
 
@@ -1072,7 +1074,7 @@ namespace gltf
         }
         else
         {
-            throw invalid_gltf_document("Unknown material.alphaMode value", alphaMode);
+            //throw invalid_gltf_document("Unknown material.alphaMode value", alphaMode);
         }
     }
 
@@ -1230,7 +1232,7 @@ namespace gltf
     {
         if (accessorComponentType == Accessor::ComponentType::None)
         {
-            throw invalid_gltf_document("Unknown accessor.componentType value");
+            //throw invalid_gltf_document("Unknown accessor.componentType value");
         }
 
         json = static_cast<uint16_t>(accessorComponentType);
@@ -1262,7 +1264,7 @@ namespace gltf
             json = "MAT4";
             break;
         default:
-            throw invalid_gltf_document("Unknown accessor.type value");
+            break; //throw invalid_gltf_document("Unknown accessor.type value");
         }
     }
 
@@ -1339,6 +1341,8 @@ namespace gltf
             case Accessor::ComponentType::UnsignedInt:
                 WriteMinMaxConvert<uint32_t>(json, accessor);
                 break;
+            case Accessor::ComponentType::None:
+                break; // TODO: return error
             }
         }
     } // namespace detail
@@ -1442,7 +1446,7 @@ namespace gltf
             json = "perspective";
             break;
         default:
-            throw invalid_gltf_document("Unknown camera.type value");
+            break; //throw invalid_gltf_document("Unknown camera.type value");
         }
     }
 
@@ -1663,7 +1667,7 @@ namespace gltf
         {
             if (!io.good())
             {
-                throw std::system_error(std::make_error_code(std::errc::io_error));
+                //throw std::system_error(std::make_error_code(std::errc::io_error));
             }
         }
 
@@ -1683,7 +1687,7 @@ namespace gltf
             const std::size_t decodedEstimate = base64Length / 4 * 3;
             if (startPos == 0 || (decodedEstimate - 2) > buffer.byteLength) // we need to give room for padding...
             {
-                throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                //throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
             }
 
 #if defined(FX_GLTF_HAS_CPP_17)
@@ -1693,7 +1697,7 @@ namespace gltf
 #endif
             if (!success)
             {
-                throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                //throw invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
             }
         }
 
@@ -1703,19 +1707,19 @@ namespace gltf
 
             if (document.buffers.size() > dataContext.readQuotas.MaxBufferCount)
             {
-                throw invalid_gltf_document("Quota exceeded : number of buffers > MaxBufferCount");
+                //throw invalid_gltf_document("Quota exceeded : number of buffers > MaxBufferCount");
             }
 
             for (auto & buffer : document.buffers)
             {
                 if (buffer.byteLength == 0)
                 {
-                    throw invalid_gltf_document("Invalid buffer.byteLength value : 0");
+                    //throw invalid_gltf_document("Invalid buffer.byteLength value : 0");
                 }
 
                 if (buffer.byteLength > dataContext.readQuotas.MaxBufferByteLength)
                 {
-                    throw invalid_gltf_document("Quota exceeded : buffer.byteLength > MaxBufferByteLength");
+                    //throw invalid_gltf_document("Quota exceeded : buffer.byteLength > MaxBufferByteLength");
                 }
 
                 if (!buffer.uri.empty())
@@ -1726,10 +1730,16 @@ namespace gltf
                     }
                     else
                     {
-                        std::ifstream fileData(detail::CreateBufferUriPath(dataContext.bufferRootPath, buffer.uri), std::ios::binary);
+                        std::string uriPath;
+                        std::optional<std::runtime_error> err;
+                        std::tie(uriPath, err) = detail::CreateBufferUriPath(dataContext.bufferRootPath, buffer.uri);
+                        if (err.has_value()) {
+                            return document; // TODO: make_pair
+                        }
+                        std::ifstream fileData(uriPath, std::ios::binary);
                         if (!fileData.good())
                         {
-                            throw invalid_gltf_document("Invalid buffer.uri value", buffer.uri);
+                            //throw invalid_gltf_document("Invalid buffer.uri value", buffer.uri);
                         }
 
                         buffer.data.resize(buffer.byteLength);
@@ -1741,7 +1751,7 @@ namespace gltf
                     std::vector<uint8_t> & binary = *dataContext.binaryData;
                     if (binary.size() < buffer.byteLength)
                     {
-                        throw invalid_gltf_document("Invalid GLB buffer data");
+                        //throw invalid_gltf_document("Invalid GLB buffer data");
                     }
 
                     buffer.data.resize(buffer.byteLength);
@@ -1756,7 +1766,7 @@ namespace gltf
         {
             if (document.buffers.empty())
             {
-                throw invalid_gltf_document("Invalid glTF document. A document must have at least 1 buffer.");
+                //throw invalid_gltf_document("Invalid glTF document. A document must have at least 1 buffer.");
             }
 
             bool foundBinaryBuffer = false;
@@ -1765,12 +1775,12 @@ namespace gltf
                 Buffer const & buffer = document.buffers[bufferIndex];
                 if (buffer.byteLength == 0)
                 {
-                    throw invalid_gltf_document("Invalid buffer.byteLength value : 0");
+                    //throw invalid_gltf_document("Invalid buffer.byteLength value : 0");
                 }
 
                 if (buffer.byteLength != buffer.data.size())
                 {
-                    throw invalid_gltf_document("Invalid buffer.byteLength value : does not match buffer.data size");
+                    //throw invalid_gltf_document("Invalid buffer.byteLength value : does not match buffer.data size");
                 }
 
                 if (buffer.uri.empty())
@@ -1778,14 +1788,14 @@ namespace gltf
                     foundBinaryBuffer = true;
                     if (bufferIndex != 0)
                     {
-                        throw invalid_gltf_document("Invalid glTF document. Only 1 buffer, the very first, is allowed to have an empty buffer.uri field.");
+                        //throw invalid_gltf_document("Invalid glTF document. Only 1 buffer, the very first, is allowed to have an empty buffer.uri field.");
                     }
                 }
             }
 
             if (useBinaryFormat && !foundBinaryBuffer)
             {
-                throw invalid_gltf_document("Invalid glTF document. No buffer found which can meet the criteria for saving to a .glb file.");
+                //throw invalid_gltf_document("Invalid glTF document. No buffer found which can meet the criteria for saving to a .glb file.");
             }
         }
 
@@ -1838,10 +1848,13 @@ namespace gltf
                 Buffer const & buffer = document.buffers[externalBufferIndex];
                 if (!buffer.IsEmbeddedResource())
                 {
-                    std::ofstream fileData(detail::CreateBufferUriPath(documentRootPath, buffer.uri), std::ios::binary);
+                    std::string uriPath;
+                    std::optional<std::runtime_error> err;
+                    std::tie(uriPath, err) = detail::CreateBufferUriPath(documentRootPath, buffer.uri);
+                    std::ofstream fileData(uriPath, std::ios::binary);
                     if (!fileData.good())
                     {
-                        throw invalid_gltf_document("Invalid buffer.uri value", buffer.uri);
+                        //throw invalid_gltf_document("Invalid buffer.uri value", buffer.uri);
                     }
 
                     fileData.write(reinterpret_cast<char const *>(&buffer.data[0]), buffer.byteLength);
@@ -1852,7 +1865,7 @@ namespace gltf
 
     inline Document LoadFromText(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
-        try
+        //try
         {
             detail::ThrowIfBad(input);
 
@@ -1861,17 +1874,17 @@ namespace gltf
 
             return detail::Create(json, { documentRootPath, readQuotas });
         }
-        catch (invalid_gltf_document &)
+        //catch (invalid_gltf_document &)
         {
-            throw;
+            //throw;
         }
-        catch (std::system_error &)
+        //catch (std::system_error &)
         {
-            throw;
+            //throw;
         }
-        catch (...)
+        //catch (...)
         {
-            std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+            //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
         }
     }
 
@@ -1880,7 +1893,7 @@ namespace gltf
         std::ifstream input(documentFilePath);
         if (!input.is_open())
         {
-            throw std::system_error(std::make_error_code(std::errc::no_such_file_or_directory));
+            //throw std::system_error(std::make_error_code(std::errc::no_such_file_or_directory));
         }
 
         return LoadFromText(input, detail::GetDocumentRootPath(documentFilePath), readQuotas);
@@ -1888,7 +1901,7 @@ namespace gltf
 
     inline Document LoadFromBinary(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
-        try
+        //try
         {
             detail::GLBHeader header{};
             detail::ThrowIfBad(input.read(reinterpret_cast<char *>(&header), detail::HeaderSize));
@@ -1896,7 +1909,7 @@ namespace gltf
                 header.jsonHeader.chunkType != detail::GLBChunkJSON ||
                 header.jsonHeader.chunkLength + detail::HeaderSize > header.length)
             {
-                throw invalid_gltf_document("Invalid GLB header");
+                //throw invalid_gltf_document("Invalid GLB header");
             }
 
             std::vector<uint8_t> json{};
@@ -1906,20 +1919,20 @@ namespace gltf
             std::size_t totalSize = detail::HeaderSize + header.jsonHeader.chunkLength;
             if (totalSize > readQuotas.MaxFileSize)
             {
-                throw invalid_gltf_document("Quota exceeded : file size > MaxFileSize");
+                //throw invalid_gltf_document("Quota exceeded : file size > MaxFileSize");
             }
 
             detail::ChunkHeader binHeader{};
             detail::ThrowIfBad(input.read(reinterpret_cast<char *>(&binHeader), detail::ChunkHeaderSize));
             if (binHeader.chunkType != detail::GLBChunkBIN)
             {
-                throw invalid_gltf_document("Invalid GLB header");
+                //throw invalid_gltf_document("Invalid GLB header");
             }
 
             totalSize += detail::ChunkHeaderSize + binHeader.chunkLength;
             if (totalSize > readQuotas.MaxFileSize)
             {
-                throw invalid_gltf_document("Quota exceeded : file size > MaxFileSize");
+                //throw invalid_gltf_document("Quota exceeded : file size > MaxFileSize");
             }
 
             std::vector<uint8_t> binary{};
@@ -1930,17 +1943,17 @@ namespace gltf
                 nlohmann::json::parse(json.begin(), json.end()),
                 { documentRootPath, readQuotas, &binary });
         }
-        catch (invalid_gltf_document &)
+        //catch (invalid_gltf_document &)
         {
-            throw;
+            //throw;
         }
-        catch (std::system_error &)
+        //catch (std::system_error &)
         {
-            throw;
+            //throw;
         }
-        catch (...)
+        //catch (...)
         {
-            std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+            //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
         }
     }
 
@@ -1949,7 +1962,7 @@ namespace gltf
         std::ifstream input(documentFilePath, std::ios::binary);
         if (!input.is_open())
         {
-            throw std::system_error(std::make_error_code(std::errc::no_such_file_or_directory));
+            //throw std::system_error(std::make_error_code(std::errc::no_such_file_or_directory));
         }
 
         return LoadFromBinary(input, detail::GetDocumentRootPath(documentFilePath), readQuotas);
@@ -1957,23 +1970,23 @@ namespace gltf
 
     inline void Save(Document const & document, std::ostream & output, std::string const & documentRootPath, bool useBinaryFormat)
     {
-        try
+        //try
         {
             detail::ValidateBuffers(document, useBinaryFormat);
 
             detail::Save(document, output, documentRootPath, useBinaryFormat);
         }
-        catch (invalid_gltf_document &)
+        //catch (invalid_gltf_document &)
         {
-            throw;
+            //throw;
         }
-        catch (std::system_error &)
+        //catch (std::system_error &)
         {
-            throw;
+            //throw;
         }
-        catch (...)
+        //catch (...)
         {
-            std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+            //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
         }
     }
 
@@ -1988,13 +2001,13 @@ namespace gltf
 inline void FormatException(std::string & output, std::exception const & ex, int level = 0)
 {
     output.append(std::string(level, ' ')).append(ex.what());
-    try
+    //try
     {
-        std::rethrow_if_nested(ex);
+        //std::rethrow_if_nested(ex);
     }
-    catch (std::exception const & e)
+    //catch (std::exception const & e)
     {
-        FormatException(output.append("\n"), e, level + 2);
+        //FormatException(output.append("\n"), e, level + 2);
     }
 }
 
