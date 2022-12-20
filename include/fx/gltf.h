@@ -34,7 +34,8 @@ typedef void FxError;
 template <typename T>
 using FxValueOrError = T;
 
-#define fxThrow throw
+#define fxAbort(e) throw e
+#define fxThrow(e) throw e
 #define fxThrowValue(rv, e) throw e
 #define fxSuccess return;
 #define fxTry try
@@ -56,7 +57,8 @@ typedef std::optional<std::runtime_error> FxError;
 template <typename T>
 using FxValueOrError = std::pair<T, FxError>;
 
-#define fxThrow return
+#define fxAbort(e) std::abort()
+#define fxThrow(e) return e
 #define fxThrowValue(rv, e) return std::make_pair(rv, e)
 #define fxSuccess return {};
 #define fxTry if(true)
@@ -72,22 +74,22 @@ inline void _abortOnError(FxError err) {
 
 #define returnValue(v) return std::make_pair(v, std::nullopt)
 
-#define returnOnError(sym, f) \
-    if (true) {          \
-      auto v = f;        \
+#define returnOnError(sym, f)     \
+    if (true) {                   \
+      auto v = f;                 \
       if (v.second.has_value()) { \
-        return v.second;    \
-      } \
-      sym = v.first;                            \
+        return v.second;          \
+      }                           \
+      sym = v.first;              \
     }
 
-#define returnValueOnError(sym, f, rv) \
-    if (true) {          \
-      auto v = f;        \
-      if (v.second.has_value()) { \
+#define returnValueOnError(sym, f, rv)       \
+    if (true) {                              \
+      auto v = f;                            \
+      if (v.second.has_value()) {            \
         return std::make_pair(rv, v.second); \
-      } \
-      sym = v.first; \
+      }                                      \
+      sym = v.first;                         \
     }
 
 #endif
@@ -269,7 +271,7 @@ namespace gltf
             const nlohmann::json::const_iterator iter = json.find(key);
             if (iter == json.end())
             {
-                fxThrow invalid_gltf_document("Required field not found", std::string(key));
+                fxThrow(invalid_gltf_document("Required field not found", std::string(key)));
             }
 
             target = iter->get<TTarget>();
@@ -654,7 +656,7 @@ namespace gltf
 #endif
             if (!success)
             {
-                fxThrow invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                fxThrow(invalid_gltf_document("Invalid buffer.uri value", "malformed base64"));
             }
             fxSuccess;
         }
@@ -916,7 +918,7 @@ namespace gltf
         }
         else
         {
-            //throw invalid_gltf_document("Unknown accessor.type value", type);
+            fxAbort(invalid_gltf_document("Unknown accessor.type value", type));
         }
     }
 
@@ -999,7 +1001,7 @@ namespace gltf
         }
         else
         {
-            //throw invalid_gltf_document("Unknown animation.sampler.interpolation value", type);
+            fxAbort(invalid_gltf_document("Unknown animation.sampler.interpolation value", type));
         }
     }
 
@@ -1069,7 +1071,7 @@ namespace gltf
         }
         else
         {
-            //throw invalid_gltf_document("Unknown camera.type value", type);
+            fxAbort(invalid_gltf_document("Unknown camera.type value", type));
         }
     }
 
@@ -1139,7 +1141,7 @@ namespace gltf
         }
         else
         {
-            //throw invalid_gltf_document("Unknown material.alphaMode value", alphaMode);
+            fxAbort(invalid_gltf_document("Unknown material.alphaMode value", alphaMode));
         }
     }
 
@@ -1297,7 +1299,7 @@ namespace gltf
     {
         if (accessorComponentType == Accessor::ComponentType::None)
         {
-            //throw invalid_gltf_document("Unknown accessor.componentType value");
+            fxAbort(invalid_gltf_document("Unknown accessor.componentType value"));
         }
 
         json = static_cast<uint16_t>(accessorComponentType);
@@ -1329,7 +1331,7 @@ namespace gltf
             json = "MAT4";
             break;
         default:
-            break; //throw invalid_gltf_document("Unknown accessor.type value");
+            fxAbort(invalid_gltf_document("Unknown accessor.type value"));
         }
     }
 
@@ -1511,7 +1513,7 @@ namespace gltf
             json = "perspective";
             break;
         default:
-            break; //throw invalid_gltf_document("Unknown camera.type value");
+            fxAbort(invalid_gltf_document("Unknown camera.type value"));
         }
     }
 
@@ -1732,7 +1734,7 @@ namespace gltf
         {
             if (!io.good())
             {
-                //throw std::system_error(std::make_error_code(std::errc::io_error));
+                fxAbort(std::system_error(std::make_error_code(std::errc::io_error)));
             }
         }
 
@@ -1752,7 +1754,7 @@ namespace gltf
             const std::size_t decodedEstimate = base64Length / 4 * 3;
             if (startPos == 0 || (decodedEstimate - 2) > buffer.byteLength) // we need to give room for padding...
             {
-                fxThrow invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                fxThrow(invalid_gltf_document("Invalid buffer.uri value", "malformed base64"));
             }
 
 #if defined(FX_GLTF_HAS_CPP_17)
@@ -1762,7 +1764,7 @@ namespace gltf
 #endif
             if (!success)
             {
-                fxThrow invalid_gltf_document("Invalid buffer.uri value", "malformed base64");
+                fxThrow(invalid_gltf_document("Invalid buffer.uri value", "malformed base64"));
             }
 
             fxSuccess;
@@ -1774,19 +1776,19 @@ namespace gltf
 
             if (document.buffers.size() > dataContext.readQuotas.MaxBufferCount)
             {
-                //throw invalid_gltf_document("Quota exceeded : number of buffers > MaxBufferCount");
+                fxThrowValue(document, invalid_gltf_document("Quota exceeded : number of buffers > MaxBufferCount"));
             }
 
             for (auto & buffer : document.buffers)
             {
                 if (buffer.byteLength == 0)
                 {
-                    //throw invalid_gltf_document("Invalid buffer.byteLength value : 0");
+                    fxThrowValue(document, invalid_gltf_document("Invalid buffer.byteLength value : 0"));
                 }
 
                 if (buffer.byteLength > dataContext.readQuotas.MaxBufferByteLength)
                 {
-                    //throw invalid_gltf_document("Quota exceeded : buffer.byteLength > MaxBufferByteLength");
+                    fxThrowValue(document, invalid_gltf_document("Quota exceeded : buffer.byteLength > MaxBufferByteLength"));
                 }
 
                 if (!buffer.uri.empty())
@@ -1802,7 +1804,7 @@ namespace gltf
                         std::ifstream fileData(uriPath, std::ios::binary);
                         if (!fileData.good())
                         {
-                            //throw invalid_gltf_document("Invalid buffer.uri value", buffer.uri);
+                            fxThrowValue(document, invalid_gltf_document("Invalid buffer.uri value", buffer.uri));
                         }
 
                         buffer.data.resize(buffer.byteLength);
@@ -1814,7 +1816,7 @@ namespace gltf
                     std::vector<uint8_t> & binary = *dataContext.binaryData;
                     if (binary.size() < buffer.byteLength)
                     {
-                        //throw invalid_gltf_document("Invalid GLB buffer data");
+                        fxThrowValue(document, invalid_gltf_document("Invalid GLB buffer data"));
                     }
 
                     buffer.data.resize(buffer.byteLength);
@@ -1825,11 +1827,11 @@ namespace gltf
             returnValue(document);
         }
 
-        inline void ValidateBuffers(Document const & document, bool useBinaryFormat)
+        inline FxError ValidateBuffers(Document const & document, bool useBinaryFormat)
         {
             if (document.buffers.empty())
             {
-                //throw invalid_gltf_document("Invalid glTF document. A document must have at least 1 buffer.");
+                fxThrow(invalid_gltf_document("Invalid glTF document. A document must have at least 1 buffer."));
             }
 
             bool foundBinaryBuffer = false;
@@ -1838,12 +1840,12 @@ namespace gltf
                 Buffer const & buffer = document.buffers[bufferIndex];
                 if (buffer.byteLength == 0)
                 {
-                    //throw invalid_gltf_document("Invalid buffer.byteLength value : 0");
+                    fxThrow(invalid_gltf_document("Invalid buffer.byteLength value : 0"));
                 }
 
                 if (buffer.byteLength != buffer.data.size())
                 {
-                    //throw invalid_gltf_document("Invalid buffer.byteLength value : does not match buffer.data size");
+                    fxThrow(invalid_gltf_document("Invalid buffer.byteLength value : does not match buffer.data size"));
                 }
 
                 if (buffer.uri.empty())
@@ -1851,15 +1853,17 @@ namespace gltf
                     foundBinaryBuffer = true;
                     if (bufferIndex != 0)
                     {
-                        //throw invalid_gltf_document("Invalid glTF document. Only 1 buffer, the very first, is allowed to have an empty buffer.uri field.");
+                        fxThrow(invalid_gltf_document("Invalid glTF document. Only 1 buffer, the very first, is allowed to have an empty buffer.uri field."));
                     }
                 }
             }
 
             if (useBinaryFormat && !foundBinaryBuffer)
             {
-                //throw invalid_gltf_document("Invalid glTF document. No buffer found which can meet the criteria for saving to a .glb file.");
+                fxThrow(invalid_gltf_document("Invalid glTF document. No buffer found which can meet the criteria for saving to a .glb file."));
             }
+
+            fxSuccess;
         }
 
         inline FxError Save(Document const & document, std::ostream & output, std::string const & documentRootPath, bool useBinaryFormat)
@@ -1916,7 +1920,7 @@ namespace gltf
                     std::ofstream fileData(uriPath, std::ios::binary);
                     if (!fileData.good())
                     {
-                        //throw invalid_gltf_document("Invalid buffer.uri value", buffer.uri);
+                        fxThrow(invalid_gltf_document("Invalid buffer.uri value", buffer.uri));
                     }
 
                     fileData.write(reinterpret_cast<char const *>(&buffer.data[0]), buffer.byteLength);
@@ -1929,6 +1933,7 @@ namespace gltf
 
     inline FxValueOrError<Document> LoadFromText(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
+        Document document;
         fxTry
         {
             detail::ThrowIfBad(input);
@@ -1936,35 +1941,43 @@ namespace gltf
             nlohmann::json json;
             input >> json;
 
-            return detail::Create(json, { documentRootPath, readQuotas });
+            returnValueOnError(document, detail::Create(json, { documentRootPath, readQuotas }), document);
+            returnValue(document);
         }
         fxCatch (invalid_gltf_document &)
         {
-            //throw;
+            fxThrowValue(document, std::runtime_error("invalid_gltf_document"));
         }
         fxCatch (std::system_error &)
         {
-            //throw;
+            fxThrowValue(document, std::runtime_error("system_error"));
         }
         fxCatch (...)
         {
-            //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+#if !defined(FX_GLTF_NOEXCEPTION)
+            std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+#endif
         }
+
+        returnValue(document);
     }
 
     inline FxValueOrError<Document> LoadFromText(std::string const & documentFilePath, ReadQuotas const & readQuotas = {})
     {
+        Document document;
         std::ifstream input(documentFilePath);
         if (!input.is_open())
         {
-            //throw std::system_error(std::make_error_code(std::errc::no_such_file_or_directory));
+            fxThrowValue(document, std::system_error(std::make_error_code(std::errc::no_such_file_or_directory)));
         }
 
-        return LoadFromText(input, detail::GetDocumentRootPath(documentFilePath), readQuotas);
+        returnValueOnError(document, LoadFromText(input, detail::GetDocumentRootPath(documentFilePath), readQuotas), document);
+        returnValue(document);
     }
 
     inline FxValueOrError<Document> LoadFromBinary(std::istream & input, std::string const & documentRootPath, ReadQuotas const & readQuotas = {})
     {
+        Document document;
         fxTry
         {
             detail::GLBHeader header{};
@@ -1973,7 +1986,7 @@ namespace gltf
                 header.jsonHeader.chunkType != detail::GLBChunkJSON ||
                 header.jsonHeader.chunkLength + detail::HeaderSize > header.length)
             {
-                //throw invalid_gltf_document("Invalid GLB header");
+                fxThrowValue(document, invalid_gltf_document("Invalid GLB header"));
             }
 
             std::vector<uint8_t> json{};
@@ -1983,81 +1996,89 @@ namespace gltf
             std::size_t totalSize = detail::HeaderSize + header.jsonHeader.chunkLength;
             if (totalSize > readQuotas.MaxFileSize)
             {
-                //throw invalid_gltf_document("Quota exceeded : file size > MaxFileSize");
+                fxThrowValue(document, invalid_gltf_document("Quota exceeded : file size > MaxFileSize"));
             }
 
             detail::ChunkHeader binHeader{};
             detail::ThrowIfBad(input.read(reinterpret_cast<char *>(&binHeader), detail::ChunkHeaderSize));
             if (binHeader.chunkType != detail::GLBChunkBIN)
             {
-                //throw invalid_gltf_document("Invalid GLB header");
+                fxThrowValue(document, invalid_gltf_document("Invalid GLB header"));
             }
 
             totalSize += detail::ChunkHeaderSize + binHeader.chunkLength;
             if (totalSize > readQuotas.MaxFileSize)
             {
-                //throw invalid_gltf_document("Quota exceeded : file size > MaxFileSize");
+                fxThrowValue(document, invalid_gltf_document("Quota exceeded : file size > MaxFileSize"));
             }
 
             std::vector<uint8_t> binary{};
             binary.resize(binHeader.chunkLength);
             detail::ThrowIfBad(input.read(reinterpret_cast<char *>(&binary[0]), binHeader.chunkLength));
 
-            return detail::Create(
-                nlohmann::json::parse(json.begin(), json.end()),
-                { documentRootPath, readQuotas, &binary });
+            returnValueOnError(document, detail::Create(nlohmann::json::parse(json.begin(), json.end()), { documentRootPath, readQuotas, &binary }), document);
+            returnValue(document);
         }
         fxCatch (invalid_gltf_document &)
         {
-            //throw;
+            fxThrowValue(document, std::runtime_error("invalid_gltf_document"));
         }
         fxCatch (std::system_error &)
         {
-            //throw;
+            fxThrowValue(document, std::runtime_error("system_error"));
         }
         fxCatch (...)
         {
-            //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+#if !defined(FX_GLTF_NOEXCEPTION)
+            std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+#endif
         }
+
+        returnValue(document);
     }
 
     inline FxValueOrError<Document> LoadFromBinary(std::string const & documentFilePath, ReadQuotas const & readQuotas = {})
     {
+        Document document;
         std::ifstream input(documentFilePath, std::ios::binary);
         if (!input.is_open())
         {
-            //throw std::system_error(std::make_error_code(std::errc::no_such_file_or_directory));
+            fxThrowValue(document, std::system_error(std::make_error_code(std::errc::no_such_file_or_directory)));
         }
 
-        return LoadFromBinary(input, detail::GetDocumentRootPath(documentFilePath), readQuotas);
+        returnValueOnError(document, LoadFromBinary(input, detail::GetDocumentRootPath(documentFilePath), readQuotas), document);
+        returnValue(document);
     }
 
-    inline void Save(Document const & document, std::ostream & output, std::string const & documentRootPath, bool useBinaryFormat)
+    inline FxError Save(Document const & document, std::ostream & output, std::string const & documentRootPath, bool useBinaryFormat)
     {
         fxTry
         {
             detail::ValidateBuffers(document, useBinaryFormat);
 
             detail::Save(document, output, documentRootPath, useBinaryFormat);
+            fxSuccess;
         }
         fxCatch (invalid_gltf_document &)
         {
-            //throw;
+            fxThrow(std::runtime_error("invalid_gltf_document"));
         }
         fxCatch (std::system_error &)
         {
-            //throw;
+            fxThrow(std::runtime_error("system_error"));
         }
         fxCatch (...)
         {
-            //std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+#if !defined(FX_GLTF_NOEXCEPTION)
+            std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
+#endif
         }
     }
 
-    inline void Save(Document const & document, std::string const & documentFilePath, bool useBinaryFormat)
+    inline FxError Save(Document const & document, std::string const & documentFilePath, bool useBinaryFormat)
     {
         std::ofstream output(documentFilePath, useBinaryFormat ? std::ios::binary : std::ios::out);
-        Save(document, output, detail::GetDocumentRootPath(documentFilePath), useBinaryFormat);
+        return Save(document, output, detail::GetDocumentRootPath(documentFilePath), useBinaryFormat);
     }
 } // namespace gltf
 
@@ -2065,14 +2086,16 @@ namespace gltf
 inline void FormatException(std::string & output, std::exception const & ex, int level = 0)
 {
     output.append(std::string(level, ' ')).append(ex.what());
-    fxTry
+#if !defined(FX_GLTF_NOEXCEPTION)
+    try
     {
-        //std::rethrow_if_nested(ex);
+        std::rethrow_if_nested(ex);
     }
-    fxCatch (std::exception const & e)
+    catch (std::exception const & e)
     {
-        //FormatException(output.append("\n"), e, level + 2);
+        FormatException(output.append("\n"), e, level + 2);
     }
+#endif
 }
 
 } // namespace fx
